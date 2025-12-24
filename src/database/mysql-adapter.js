@@ -24,6 +24,33 @@ class MySQLAdapter {
     }
   }
 
+  async ping() {
+    try {
+      await this.pool.query('SELECT 1');
+      return true;
+    } catch (err) {
+      logger.warn('MySQL connection check failed', { error: err.message });
+      return false;
+    }
+  }
+
+  async ensureConnected() {
+    if (!this.pool) {
+      await this.connect();
+      return;
+    }
+    const isAlive = await this.ping();
+    if (!isAlive) {
+      logger.info('Reconnecting to MySQL...');
+      try {
+        await this.pool.end();
+      } catch (e) {
+        // ignore
+      }
+      await this.connect();
+    }
+  }
+
   async getColumns(tableName) {
     try {
       const [rows] = await this.pool.query(

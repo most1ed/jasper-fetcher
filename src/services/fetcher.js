@@ -13,6 +13,7 @@ class Fetcher {
     let pageNumber = 1;
     let hasMore = true;
     let totalFetched = 0;
+    const connectionCheckInterval = 50; // Check connection every 50 pages
 
     logger.info(`Starting paginated fetch for ${endpoint}`);
 
@@ -82,10 +83,21 @@ class Fetcher {
 
       pageNumber++;
 
+      // Periodically check database connection health
+      if (onPageFetched && pageNumber % connectionCheckInterval === 0) {
+        await this.db.ensureConnected();
+      }
+
       if (pageNumber > 1000) {
         logger.warn(`Pagination limit reached for ${endpoint}`);
         break;
       }
+    }
+
+    // Final connection check after fetching completes
+    if (onPageFetched) {
+      await this.db.ensureConnected();
+      logger.info('Database connection verified after fetch');
     }
 
     logger.info(`Fetched total ${totalFetched} records from ${endpoint}`);
