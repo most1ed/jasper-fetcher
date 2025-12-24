@@ -1,0 +1,19 @@
+[Unit]
+Description=Jasper API Fetcher Scheduler
+After=network.target mysql.service
+
+[Service]
+Type=simple
+User=nst
+WorkingDirectory=/home/nst/WebstormProjects/jasper-fetchers
+ExecStart=/usr/bin/node src/scheduler.js
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Environment
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target

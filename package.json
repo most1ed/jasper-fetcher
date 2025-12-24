@@ -1,0 +1,26 @@
+{
+  "name": "jasper-fetchers",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "fetch": "node src/index.js",
+    "scheduler": "node src/scheduler.js",
+    "scheduler:now": "node src/scheduler.js --now"
+  },
+  "keywords": [
+    "jasper",
+    "api",
+    "fetcher"
+  ],
+  "author": "",
+  "license": "ISC",
+  "description": "Fetch data from Jasper ERP API and store in database",
+  "dependencies": {
+    "axios": "^1.13.2",
+    "dotenv": "^17.2.3",
+    "mysql2": "^3.16.0",
+    "node-cron": "^4.2.1",
+    "pg": "^8.16.3"
+  }
+}
