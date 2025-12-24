@@ -60,7 +60,7 @@ class Fetcher {
 
       // If callback provided, process page immediately (streaming mode)
       if (onPageFetched) {
-        await onPageFetched(pageData);
+        await onPageFetched(pageData, pageNumber);
       } else {
         // Batch mode - collect all data
         allData.push(...pageData);
@@ -113,7 +113,7 @@ class Fetcher {
 
     try {
       // Streaming mode: process each page as it arrives to reduce memory usage
-      const onPageFetched = async (pageData) => {
+      const onPageFetched = async (pageData, pageNumber) => {
         if (!pageData.length) return;
 
         const flattenedData = pageData.map((row) => this.schema.flattenRow(row));
@@ -125,11 +125,14 @@ class Fetcher {
         }
 
         // Insert this page's data immediately
+        let pageInserted = 0;
         for (let i = 0; i < flattenedData.length; i += batchSize) {
           const batch = flattenedData.slice(i, i + batchSize);
           await this.db.insertBatch(tableName, batch);
+          pageInserted += batch.length;
         }
         totalStored += flattenedData.length;
+        logger.info(`Page ${pageNumber}: inserted ${pageInserted} records into ${tableName} (total: ${totalStored})`);
 
         // Collect nested data for later processing
         for (const nested of nestedTables) {
