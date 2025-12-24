@@ -6,7 +6,9 @@
     "start": "node src/index.js",
     "fetch": "node src/index.js",
     "scheduler": "node src/scheduler.js",
-    "scheduler:now": "node src/scheduler.js --now"
+    "scheduler:now": "node src/scheduler.js --now",
+    "cleanup": "node src/cleanup.js truncate",
+    "cleanup:drop": "node src/cleanup.js drop"
   },
   "keywords": [
     "jasper",
@@ -21,6 +23,7 @@
     "dotenv": "^17.2.3",
     "mysql2": "^3.16.0",
     "node-cron": "^4.2.1",
-    "pg": "^8.16.3"
+    "pg": "^8.16.3",
+    "tunnel-ssh": "^5.2.0"
   }
 }

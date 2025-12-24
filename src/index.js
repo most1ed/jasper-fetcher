@@ -1,7 +1,7 @@
 require('dotenv').config();
 
 const logger = require('./utils/logger');
-const { createAdapter } = require('./database/adapter-factory');
+const { createAdapterWithTunnel, closeTunnel } = require('./database/adapter-factory');
 const ApiClient = require('./services/api-client');
 const Fetcher = require('./services/fetcher');
 const endpoints = require('./endpoints/definitions');
@@ -115,7 +115,7 @@ async function main() {
   logger.info(`Date Range Mode: ${dateRangeMode}`);
   logger.info(`Total date ranges to process: ${dateRanges.length}`);
 
-  const db = createAdapter();
+  const db = await createAdapterWithTunnel();
   const api = new ApiClient(apiUrl, apiKey);
   const fetcher = new Fetcher(api, db);
 
@@ -167,6 +167,7 @@ async function main() {
     process.exit(1);
   } finally {
     await db.disconnect();
+    await closeTunnel();
   }
 }
 

@@ -64,6 +64,25 @@ DATE_RANGE_YEAR=2024
 | `ytd_by_month` | Year to date, split by month |
 | `last_n_days` | Last N days (set DATE_RANGE_DAYS) |
 
+### SSH Tunnel (Optional)
+
+For databases behind a firewall, enable SSH tunneling:
+
+```env
+# Enable SSH tunnel
+SSH_TUNNEL_ENABLED=true
+SSH_HOST=103.22.206.240
+SSH_PORT=2246
+SSH_USER=your_user
+SSH_PASSWORD=your_password
+SSH_LOCAL_PORT=33306
+
+# Or use private key instead of password
+SSH_PRIVATE_KEY=/path/to/private/key
+```
+
+The fetcher will connect to the database through the SSH tunnel automatically.
+
 ## Usage
 
 ### Fetch All Endpoints
@@ -92,6 +111,16 @@ npm start sales_quote           # Sales quote report
 npm start sales_target          # Sales target report
 npm start operational_expense   # Operational expense report
 npm start vehicle_service       # Vehicle service report
+```
+
+### Cleanup Data
+
+```bash
+# Truncate all jasper_* tables (keep structure, remove data)
+npm run cleanup
+
+# Drop all jasper_* tables (remove completely)
+npm run cleanup:drop
 ```
 
 ### Run Scheduler
@@ -181,6 +210,7 @@ jasper-fetchers/
 ├── src/
 │   ├── index.js              # Main entry point
 │   ├── scheduler.js          # Cron scheduler
+│   ├── cleanup.js            # Cleanup jasper_* tables
 │   ├── config/
 │   │   └── database.js       # Database configuration
 │   ├── services/
@@ -194,7 +224,8 @@ jasper-fetchers/
 │   ├── endpoints/
 │   │   └── definitions.js    # Endpoint configurations
 │   └── utils/
-│       └── logger.js         # Logging utility
+│       ├── logger.js         # Logging utility
+│       └── ssh-tunnel.js     # SSH tunnel for DB connections
 ├── .env.example
 ├── .gitignore
 ├── package.json

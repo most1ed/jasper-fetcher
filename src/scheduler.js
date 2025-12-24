@@ -2,10 +2,18 @@ require('dotenv').config();
 
 const cron = require('node-cron');
 const logger = require('./utils/logger');
-const { createAdapter } = require('./database/adapter-factory');
+const { createAdapterWithTunnel, closeTunnel } = require('./database/adapter-factory');
 const ApiClient = require('./services/api-client');
 const Fetcher = require('./services/fetcher');
 const endpoints = require('./endpoints/definitions');
+
+// Format date as YYYY-MM-DD in local timezone
+function formatDate(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 // Generate month ranges for a given year
 function getMonthRanges(year) {
@@ -14,8 +22,8 @@ function getMonthRanges(year) {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     ranges.push({
-      dateFrom: firstDay.toISOString().split('T')[0],
-      dateTo: lastDay.toISOString().split('T')[0],
+      dateFrom: formatDate(firstDay),
+      dateTo: formatDate(lastDay),
       label: `${year}-${String(month + 1).padStart(2, '0')}`,
     });
   }
@@ -43,8 +51,8 @@ function calculateDateRanges() {
     const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
     return [{
-      dateFrom: firstDay.toISOString().split('T')[0],
-      dateTo: lastDay.toISOString().split('T')[0],
+      dateFrom: formatDate(firstDay),
+      dateTo: formatDate(lastDay),
       label: 'previous_month',
     }];
   }
@@ -52,8 +60,8 @@ function calculateDateRanges() {
   if (mode === 'current_month') {
     const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
     return [{
-      dateFrom: firstDay.toISOString().split('T')[0],
-      dateTo: now.toISOString().split('T')[0],
+      dateFrom: formatDate(firstDay),
+      dateTo: formatDate(now),
       label: 'current_month',
     }];
   }
@@ -65,8 +73,8 @@ function calculateDateRanges() {
       const firstDay = new Date(now.getFullYear(), month, 1);
       const lastDay = month === now.getMonth() ? now : new Date(now.getFullYear(), month + 1, 0);
       ranges.push({
-        dateFrom: firstDay.toISOString().split('T')[0],
-        dateTo: lastDay.toISOString().split('T')[0],
+        dateFrom: formatDate(firstDay),
+        dateTo: formatDate(lastDay),
         label: `${now.getFullYear()}-${String(month + 1).padStart(2, '0')}`,
       });
     }
@@ -78,8 +86,8 @@ function calculateDateRanges() {
     const startDate = new Date(now);
     startDate.setDate(startDate.getDate() - days);
     return [{
-      dateFrom: startDate.toISOString().split('T')[0],
-      dateTo: now.toISOString().split('T')[0],
+      dateFrom: formatDate(startDate),
+      dateTo: formatDate(now),
       label: `last_${days}_days`,
     }];
   }
@@ -97,8 +105,8 @@ async function runFetchJob() {
   const apiKey = process.env.JASPER_API_KEY;
   const officeCode = process.env.OFFICE_CODE;
 
-  // Calculate date range dynamically
-  const { dateFrom, dateTo } = calculateDateRange();
+  const dateRangeMode = process.env.DATE_RANGE_MODE || 'static';
+  const dateRanges = calculateDateRanges();
 
   if (!apiUrl || !apiKey) {
     logger.error('Missing JASPER_API_URL or JASPER_API_KEY in environment');
@@ -111,9 +119,10 @@ async function runFetchJob() {
   logger.info(`API URL: ${apiUrl}`);
   logger.info(`Database provider: ${process.env.DB_PROVIDER || 'mysql'}`);
   if (officeCode) logger.info(`Office Code: ${officeCode}`);
-  logger.info(`Date Range: ${dateFrom} to ${dateTo} (mode: ${process.env.DATE_RANGE_MODE || 'static'})`);
+  logger.info(`Date Range Mode: ${dateRangeMode}`);
+  logger.info(`Total date ranges to process: ${dateRanges.length}`);
 
-  const db = createAdapter();
+  const db = await createAdapterWithTunnel();
   const api = new ApiClient(apiUrl, apiKey);
   const fetcher = new Fetcher(api, db);
 
@@ -127,30 +136,43 @@ async function runFetchJob() {
     await db.connect();
 
     for (const endpoint of endpoints) {
-      const params = { ...endpoint.params };
+      // For non-date endpoints, fetch once
+      if (!endpoint.requiresDate) {
+        const params = { ...endpoint.params };
+        if (officeCode) params.office_code = officeCode;
 
-      if (officeCode) {
-        params.office_code = officeCode;
+        try {
+          logger.info(`Processing: ${endpoint.path} -> ${endpoint.tableName}`);
+          await fetcher.fetchAndStore({ ...endpoint, params });
+          results.success.push(endpoint.tableName);
+        } catch (error) {
+          logger.error(`Failed: ${endpoint.tableName}`, { error: error.message });
+          results.failed.push({ table: endpoint.tableName, error: error.message });
+        }
+        continue;
       }
 
-      // Add date params for report endpoints
-      if (endpoint.requiresDate) {
-        if (!dateFrom || !dateTo) {
+      // For date-required endpoints, fetch each date range separately
+      for (const range of dateRanges) {
+        if (!range.dateFrom || !range.dateTo) {
           logger.warn(`Skipping ${endpoint.tableName}: DATE_FROM and DATE_TO required`);
           results.skipped.push(endpoint.tableName);
           continue;
         }
-        params.date_from = dateFrom;
-        params.date_to = dateTo;
-      }
 
-      try {
-        logger.info(`Processing: ${endpoint.path} -> ${endpoint.tableName}`);
-        await fetcher.fetchAndStore({ ...endpoint, params });
-        results.success.push(endpoint.tableName);
-      } catch (error) {
-        logger.error(`Failed: ${endpoint.tableName}`, { error: error.message });
-        results.failed.push({ table: endpoint.tableName, error: error.message });
+        const params = { ...endpoint.params };
+        if (officeCode) params.office_code = officeCode;
+        params.date_from = range.dateFrom;
+        params.date_to = range.dateTo;
+
+        try {
+          logger.info(`Processing: ${endpoint.path} -> ${endpoint.tableName} [${range.label}] (${range.dateFrom} to ${range.dateTo})`);
+          await fetcher.fetchAndStore({ ...endpoint, params });
+          results.success.push(`${endpoint.tableName}[${range.label}]`);
+        } catch (error) {
+          logger.error(`Failed: ${endpoint.tableName} [${range.label}]`, { error: error.message });
+          results.failed.push({ table: endpoint.tableName, range: range.label, error: error.message });
+        }
       }
     }
 
@@ -170,6 +192,7 @@ async function runFetchJob() {
     logger.error('Fatal error in scheduled job', { error: error.message });
   } finally {
     await db.disconnect();
+    await closeTunnel();
   }
 
   return results;
