@@ -8,10 +8,11 @@ class Fetcher {
     this.schema = new SchemaHandler(dbAdapter);
   }
 
-  async fetchPaginated(endpoint, params = {}, tableName) {
+  async fetchPaginated(endpoint, params = {}, tableName, onPageFetched = null) {
     const allData = [];
     let pageNumber = 1;
     let hasMore = true;
+    let totalFetched = 0;
 
     logger.info(`Starting paginated fetch for ${endpoint}`);
 
@@ -51,26 +52,31 @@ class Fetcher {
         continue;
       }
 
-      if (Array.isArray(data)) {
-        allData.push(...data);
-      } else if (typeof data === 'object') {
-        allData.push(data);
-      }
+      const pageData = Array.isArray(data) ? data : [data];
+      totalFetched += pageData.length;
 
-      logger.info(`Page ${pageNumber}: fetched ${Array.isArray(data) ? data.length : 1} records from ${endpoint}`);
+      logger.info(`Page ${pageNumber}: fetched ${pageData.length} records from ${endpoint}`);
+
+      // If callback provided, process page immediately (streaming mode)
+      if (onPageFetched) {
+        await onPageFetched(pageData);
+      } else {
+        // Batch mode - collect all data
+        allData.push(...pageData);
+      }
 
       if (isPaginated) {
         // Handle pagination - current_page can be string or number
         const currentPage = parseInt(response.current_page, 10) || pageNumber;
         const totalCount = parseInt(response.count, 10) || 0;
-        const pageSize = Array.isArray(data) ? data.length : 1;
+        const pageSize = pageData.length;
 
         if (totalCount > 0 && pageSize > 0) {
           const totalPages = Math.ceil(totalCount / pageSize);
           hasMore = currentPage < totalPages && pageSize > 0;
         } else {
           // No count info - keep fetching until empty response
-          hasMore = Array.isArray(data) && data.length > 0;
+          hasMore = pageData.length > 0;
         }
       }
 
@@ -82,36 +88,60 @@ class Fetcher {
       }
     }
 
-    logger.info(`Fetched total ${allData.length} records from ${endpoint}`);
-    return allData;
+    logger.info(`Fetched total ${totalFetched} records from ${endpoint}`);
+    return onPageFetched ? totalFetched : allData;
   }
 
   async fetchAndStore(endpointConfig) {
     const { path, tableName, params = {}, nestedTables = [] } = endpointConfig;
+    const batchSize = 100;
+    let tableCreated = false;
+    let totalStored = 0;
+    const allNestedData = [];
 
     try {
-      const data = await this.fetchPaginated(path, params, tableName);
+      // Streaming mode: process each page as it arrives to reduce memory usage
+      const onPageFetched = async (pageData) => {
+        if (!pageData.length) return;
 
-      if (!data.length) {
+        const flattenedData = pageData.map((row) => this.schema.flattenRow(row));
+
+        // Create table on first batch
+        if (!tableCreated) {
+          await this.schema.ensureTable(tableName, flattenedData[0]);
+          tableCreated = true;
+        }
+
+        // Insert this page's data immediately
+        for (let i = 0; i < flattenedData.length; i += batchSize) {
+          const batch = flattenedData.slice(i, i + batchSize);
+          await this.db.insertBatch(tableName, batch);
+        }
+        totalStored += flattenedData.length;
+
+        // Collect nested data for later processing
+        for (const nested of nestedTables) {
+          const { nestedKey, parentKey } = nested;
+          const extracted = this.schema.extractNestedData(pageData, parentKey, nestedKey);
+          if (extracted.length) {
+            allNestedData.push({ nested, data: extracted });
+          }
+        }
+      };
+
+      await this.fetchPaginated(path, params, tableName, onPageFetched);
+
+      if (totalStored === 0) {
         logger.info(`No data to store for ${tableName}`);
         return;
       }
 
-      const flattenedData = data.map((row) => this.schema.flattenRow(row));
-      await this.schema.ensureTable(tableName, flattenedData[0]);
+      // Process nested tables after main table is complete
+      for (const { nested, data } of allNestedData) {
+        const { childTable } = nested;
+        const flattenedNested = data.map((row) => this.schema.flattenRow(row));
 
-      const batchSize = 100;
-      for (let i = 0; i < flattenedData.length; i += batchSize) {
-        const batch = flattenedData.slice(i, i + batchSize);
-        await this.db.insertBatch(tableName, batch);
-      }
-
-      for (const nested of nestedTables) {
-        const { sourceKey, nestedKey, childTable, parentKey } = nested;
-        const nestedData = this.schema.extractNestedData(data, parentKey, nestedKey);
-
-        if (nestedData.length) {
-          const flattenedNested = nestedData.map((row) => this.schema.flattenRow(row));
+        if (flattenedNested.length) {
           await this.schema.ensureTable(childTable, flattenedNested[0]);
 
           for (let i = 0; i < flattenedNested.length; i += batchSize) {
@@ -121,7 +151,7 @@ class Fetcher {
         }
       }
 
-      logger.info(`Completed storing data for ${tableName}`);
+      logger.info(`Completed storing ${totalStored} records for ${tableName}`);
     } catch (error) {
       logger.error(`Failed to fetch/store ${tableName}`, { error: error.message });
       throw error;
