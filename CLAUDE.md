@@ -17,8 +17,8 @@ npm run cleanup              # Truncate all jasper_* tables
 npm run cleanup:drop         # Drop all jasper_* tables
 
 # Individual table cleanup (table name auto-prefixed with jasper_ if needed)
-node src/cleanup.js truncate stock_aging_location_report
-node src/cleanup.js drop jasper_stock_aging_location_report
+npm run cleanup:table stock_aging_location_report
+npm run cleanup:drop:table jasper_stock_aging_location_report
 ```
 
 ## Architecture

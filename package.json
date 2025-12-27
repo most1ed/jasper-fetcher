@@ -8,7 +8,9 @@
     "scheduler": "node src/scheduler.js",
     "scheduler:now": "node src/scheduler.js --now",
     "cleanup": "node src/cleanup.js truncate",
-    "cleanup:drop": "node src/cleanup.js drop"
+    "cleanup:drop": "node src/cleanup.js drop",
+    "cleanup:table": "node src/cleanup.js truncate",
+    "cleanup:drop:table": "node src/cleanup.js drop"
   },
   "keywords": [
     "jasper",
