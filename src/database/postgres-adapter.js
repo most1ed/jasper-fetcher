@@ -73,7 +73,8 @@ class PostgresAdapter {
     if (value === null || value === undefined) return 'TEXT';
     if (typeof value === 'boolean') return 'BOOLEAN';
     if (typeof value === 'number') {
-      return Number.isInteger(value) ? 'BIGINT' : 'NUMERIC(20,6)';
+      // Always use NUMERIC to handle both integers and decimals safely
+      return 'NUMERIC(20,6)';
     }
     if (value instanceof Date) return 'TIMESTAMP';
     if (typeof value === 'string') {

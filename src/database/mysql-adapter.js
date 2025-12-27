@@ -78,7 +78,8 @@ class MySQLAdapter {
     if (value === null || value === undefined) return 'TEXT';
     if (typeof value === 'boolean') return 'TINYINT(1)';
     if (typeof value === 'number') {
-      return Number.isInteger(value) ? 'BIGINT' : 'DECIMAL(20,6)';
+      // Always use DECIMAL to handle both integers and decimals safely
+      return 'DECIMAL(20,6)';
     }
     if (value instanceof Date) return 'DATETIME';
     if (typeof value === 'string') {
