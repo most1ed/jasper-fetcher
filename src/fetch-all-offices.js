@@ -16,6 +16,9 @@ const OFFICE_CODES = [
   { code: 'BCTN/SBY', name: 'BCTN SURABAYA' },
 ];
 
+// Tables to skip (shared across all offices, not office-specific)
+const SKIP_TABLES = ['jasper_item', 'jasper_item_group'];
+
 // Format date as YYYY-MM-DD in local timezone
 function formatDate(date) {
   const year = date.getFullYear();
@@ -197,6 +200,12 @@ async function main() {
       logger.info('='.repeat(70));
 
       for (const endpoint of endpoints) {
+        // Skip shared tables (item, item_group - not office-specific)
+        if (SKIP_TABLES.includes(endpoint.tableName)) {
+          logger.info(`[${office.code}] Skipping ${endpoint.tableName} (shared data)`);
+          continue;
+        }
+
         // For non-date endpoints, fetch once
         if (!endpoint.requiresDate) {
           const params = { ...endpoint.params, office_code: office.code };
