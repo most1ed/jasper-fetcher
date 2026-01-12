@@ -19,12 +19,17 @@ npm run cleanup:drop         # Drop all jasper_* tables
 # Individual table cleanup (table name auto-prefixed with jasper_ if needed)
 npm run cleanup:table stock_aging_location_report
 npm run cleanup:drop:table jasper_stock_aging_location_report
+
+# Fetch all offices (truncates tables first, then fetches all endpoints for all office codes)
+npm run fetch:all-offices              # With cleanup
+npm run fetch:all-offices:no-cleanup   # Without cleanup
 ```
 
 ## Architecture
 
 **Entry Points:**
 - `src/index.js` - Main fetcher, processes endpoints based on CLI args
+- `src/fetch-all-offices.js` - Fetches all endpoints for all office codes (BCTN, BCTN/JKT, BCTN/JMB, BCTN MDN, BCTN/KMP, BCTN/SBY)
 - `src/scheduler.js` - Cron-based scheduler using node-cron
 - `src/cleanup.js` - Database cleanup utility
 

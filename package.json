@@ -5,6 +5,8 @@
   "scripts": {
     "start": "node src/index.js",
     "fetch": "node src/index.js",
+    "fetch:all-offices": "node src/fetch-all-offices.js",
+    "fetch:all-offices:no-cleanup": "node src/fetch-all-offices.js --no-cleanup",
     "scheduler": "node src/scheduler.js",
     "scheduler:now": "node src/scheduler.js --now",
     "cleanup": "node src/cleanup.js truncate",
