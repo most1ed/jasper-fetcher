@@ -27,10 +27,17 @@ function formatDate(date) {
   return `${year}-${month}-${day}`;
 }
 
-// Generate month ranges for a given year
-function getMonthRanges(year) {
+// Fixed date range configuration (not from .env)
+const DATE_RANGE_START = { year: 2024, month: 1 };  // January 2024
+const DATE_RANGE_END = { year: 2026, month: 1 };    // January 2026
+
+// Generate month ranges from start to end (inclusive)
+function calculateDateRanges() {
   const ranges = [];
-  for (let month = 0; month < 12; month++) {
+  let year = DATE_RANGE_START.year;
+  let month = DATE_RANGE_START.month - 1; // 0-indexed
+
+  while (year < DATE_RANGE_END.year || (year === DATE_RANGE_END.year && month < DATE_RANGE_END.month)) {
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
     ranges.push({
@@ -38,74 +45,15 @@ function getMonthRanges(year) {
       dateTo: formatDate(lastDay),
       label: `${year}-${String(month + 1).padStart(2, '0')}`,
     });
-  }
-  return ranges;
-}
 
-// Calculate date ranges based on DATE_RANGE_MODE
-function calculateDateRanges() {
-  const mode = process.env.DATE_RANGE_MODE || 'static';
-  const now = new Date();
-
-  if (mode === 'yearly_by_month') {
-    const year = parseInt(process.env.DATE_RANGE_YEAR || now.getFullYear(), 10);
-    return getMonthRanges(year);
-  }
-
-  if (mode === 'previous_year_by_month') {
-    return getMonthRanges(now.getFullYear() - 1);
-  }
-
-  if (mode === 'previous_month') {
-    const firstDay = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
-    return [{
-      dateFrom: formatDate(firstDay),
-      dateTo: formatDate(lastDay),
-      label: 'previous_month',
-    }];
-  }
-
-  if (mode === 'current_month') {
-    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
-    return [{
-      dateFrom: formatDate(firstDay),
-      dateTo: formatDate(now),
-      label: 'current_month',
-    }];
-  }
-
-  if (mode === 'ytd_by_month') {
-    const ranges = [];
-    for (let month = 0; month <= now.getMonth(); month++) {
-      const firstDay = new Date(now.getFullYear(), month, 1);
-      const lastDay = month === now.getMonth() ? now : new Date(now.getFullYear(), month + 1, 0);
-      ranges.push({
-        dateFrom: formatDate(firstDay),
-        dateTo: formatDate(lastDay),
-        label: `${now.getFullYear()}-${String(month + 1).padStart(2, '0')}`,
-      });
+    month++;
+    if (month > 11) {
+      month = 0;
+      year++;
     }
-    return ranges;
   }
 
-  if (mode === 'last_n_days') {
-    const days = parseInt(process.env.DATE_RANGE_DAYS || '30', 10);
-    const startDate = new Date(now);
-    startDate.setDate(startDate.getDate() - days);
-    return [{
-      dateFrom: formatDate(startDate),
-      dateTo: formatDate(now),
-      label: `last_${days}_days`,
-    }];
-  }
-
-  // Static mode
-  return [{
-    dateFrom: process.env.DATE_FROM,
-    dateTo: process.env.DATE_TO,
-    label: 'static',
-  }];
+  return ranges;
 }
 
 // Truncate all jasper_* tables
@@ -151,7 +99,6 @@ async function truncateAllTables(db) {
 async function main() {
   const apiUrl = process.env.JASPER_API_URL;
   const apiKey = process.env.JASPER_API_KEY;
-  const dateRangeMode = process.env.DATE_RANGE_MODE || 'static';
   const skipCleanup = process.argv.includes('--no-cleanup');
 
   if (!apiUrl || !apiKey) {
@@ -166,8 +113,7 @@ async function main() {
   logger.info('='.repeat(70));
   logger.info(`API URL: ${apiUrl}`);
   logger.info(`Database provider: ${process.env.DB_PROVIDER || 'mysql'}`);
-  logger.info(`Date Range Mode: ${dateRangeMode}`);
-  logger.info(`Total date ranges: ${dateRanges.length}`);
+  logger.info(`Date range: ${DATE_RANGE_START.year}-${String(DATE_RANGE_START.month).padStart(2, '0')} to ${DATE_RANGE_END.year}-${String(DATE_RANGE_END.month).padStart(2, '0')} (${dateRanges.length} months)`);
   logger.info(`Office codes: ${OFFICE_CODES.map(o => o.code).join(', ')}`);
 
   const db = await createAdapterWithTunnel();
